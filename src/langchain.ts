@@ -1,27 +1,61 @@
 import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { tools } from "./agent";
-import { RunnableSequence } from "@langchain/core/runnables";
+import {
+  ChatPromptTemplate,
+  MessagesPlaceholder,
+  PromptTemplate,
+} from "@langchain/core/prompts";
+import { getSupportedChainsTool } from "./tools/tokenTransfer";
+import { AgentExecutor, createReactAgent } from "langchain/agents";
+import dotenv from "dotenv";
 
-export const model = new ChatOpenAI({
+dotenv.config();
+
+export const llm = new ChatOpenAI({
+  apiKey: process.env.OPENAI_API_KEY,
   modelName: "gpt-4o-mini",
   temperature: 0,
 });
 
-const prompt = ChatPromptTemplate.fromTemplate(
-  `
-You are a helpful assistant that can answer questions about the Debridge protocol and have the tools to get the information you need.
+// Use the default React agent prompt template
+// This automatically includes the required variables: tools, tool_names, agent_scratchpad
+const prompt = PromptTemplate.fromTemplate(`
+You are a helpful assistant that can answer questions about the Debridge protocol.
+You have access to the following tools:
 
-You are given a question and a list of tokens.
+{tools}
 
-You need to answer the question based on the list of tokens.
+Use the following format:
 
+Question: the input question you must answer
+Thought: you should always think about what to do
+Action: the action to take, should be one of [{tool_names}]
+Action Input: the input to the action
+Observation: the result of the action
+... (this Thought/Action/Action Input/Observation can repeat N times)
+Thought: I now know the final answer
+Final Answer: the final answer to the original input question
 
-  `
-);
+Begin!
 
-const llm = model.bindTools(tools);
+Question: {input}
+{agent_scratchpad}
+`);
 
-const result = await llm.invoke("What are the supported chains buy debridge?");
+const tools = [getSupportedChainsTool];
+
+const agent = await createReactAgent({
+  llm,
+  tools,
+  prompt,
+});
+
+const agentExecutor = new AgentExecutor({
+  agent,
+  tools,
+});
+
+const result = await agentExecutor.invoke({
+  input: "what chains are supported by wormhole?",
+});
 
 console.log(result);
